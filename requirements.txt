@@ -1,0 +1,3 @@
+# Citad3l bot scripts (market_signal.py, ai_intel.py, runners.py)
+# Python 3.9+ standard library + Pillow (image cards; scripts fall back to text-only embeds without it)
+Pillow>=10.1

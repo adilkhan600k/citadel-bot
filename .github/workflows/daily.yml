@@ -1,0 +1,123 @@
+name: Daily Citad3l posts
+
+# Schedules are UTC. 13:00 UTC is 8:00 AM Chicago while CDT is in effect.
+# Each job is independent. A failure in one does not skip the others.
+# State commits keep the repository active so GitHub does not disable the schedule.
+on:
+  schedule:
+    - cron: "0 13 * * *"
+    - cron: "0 14 * * *"
+    - cron: "15 14 * * *"
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Which posts to run
+        required: true
+        type: choice
+        default: all
+        options:
+          - all
+          - market
+          - ai
+          - runners
+
+concurrency:
+  group: citadel-bot-state
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  ai:
+    name: AI news and calendar
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: >-
+      (github.event_name == 'schedule' && github.event.schedule == '0 13 * * *')
+      || (github.event_name == 'workflow_dispatch' && (github.event.inputs.target == 'all' || github.event.inputs.target == 'ai'))
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Post AI news
+        id: news
+        continue-on-error: true
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+        run: python ai_intel.py news
+      - name: Update AI calendar
+        id: calendar
+        if: always()
+        continue-on-error: true
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+        run: python ai_intel.py calendar
+      - name: Commit state
+        if: always()
+        run: |
+          bash .github/workflows/commit-state.sh "chore: save AI intel state [skip ci]"
+      - name: Fail if a post failed
+        if: always() && (steps.news.outcome == 'failure' || steps.calendar.outcome == 'failure')
+        run: exit 1
+
+  market:
+    name: Market signal
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: >-
+      (github.event_name == 'schedule' && github.event.schedule == '0 14 * * *')
+      || (github.event_name == 'workflow_dispatch' && (github.event.inputs.target == 'all' || github.event.inputs.target == 'market'))
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Post market signal
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+        run: python market_signal.py
+      - name: Commit state
+        if: always()
+        run: |
+          bash .github/workflows/commit-state.sh "chore: save market signal state [skip ci]"
+
+  runners:
+    name: Runners of the Day
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: >-
+      (github.event_name == 'schedule' && github.event.schedule == '15 14 * * *')
+      || (github.event_name == 'workflow_dispatch' && (github.event.inputs.target == 'all' || github.event.inputs.target == 'runners'))
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Post runners
+        env:
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+        run: python runners.py
+      - name: Commit state
+        if: always()
+        run: |
+          bash .github/workflows/commit-state.sh "chore: save runners state [skip ci]"
